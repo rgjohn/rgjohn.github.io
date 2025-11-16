@@ -1,152 +1,233 @@
 //
 // lod-loader.js
-// OSI C1P PCjs extension for loading .LOD programs
+// OSI C1P PCjs extension for loading .LOD programs by simulating keyboard input
+//
+// This file is deliberately self-contained and does NOT depend on PCjs internals.
+// It works by:
+//  - adding a "Load .LOD Program" button near the C1P controls
+//  - reading a .lod text file
+//  - normalising CR/CRLF/LF line endings
+//  - "typing" each line into the emulator via synthetic keyboard events
+//  - sending a final CR after each line
+//
+// Important notes:
+//  - The .LOD file should already contain the final ".XXXXG" line if you want auto-run.
+//    We simply type that line as if you had done it by hand.
 //
 
 (function() {
+    "use strict";
 
-    //
-    // Utility: Wait for PCjs machine to be fully initialized
-    //
-    function waitForMachine(callback) {
-        const check = () => {
-            if (window && window.pcjsMachines && Object.keys(window.pcjsMachines).length > 0) {
-                callback();
-            } else {
-                setTimeout(check, 200);
-            }
-        };
-        check();
+    // ---- Utility: log helper ----
+    function log(msg) {
+        if (window && window.console && console.log) {
+            console.log("LOD Loader:", msg);
+        }
     }
 
-    //
-    // Inject text into monitor as keystrokes (CR appended)
-    //
-    function injectLine(machine, line) {
-        const input = machine.keyboard;
-        if (!input) {
-            console.error("LOD Loader: keyboard not found");
-            return;
-        }
-        // Add CR if missing
-        if (!line.endsWith("\r")) line += "\r";
+    // ---- Utility: normalise line endings and split into non-empty lines ----
+    function parseLODText(text) {
+        // Convert CRLF -> CR, LF -> CR, then split on CR.
+        const normalised = text.replace(/\r\n/g, "\r").replace(/\n/g, "\r");
+        const lines = normalised
+            .split("\r")
+            .map(l => l.trim())
+            .filter(l => l.length > 0);
+        return lines;
+    }
+
+    // ---- Utility: synthetic key events to simulate typing ----
+    function sendChar(ch) {
+        const isEnter = (ch === "\r");
+        const key = isEnter ? "Enter" : ch;
+        const code = isEnter ? 13 : ch.charCodeAt(0);
+
+        ["keydown", "keypress", "keyup"].forEach(type => {
+            const ev = new KeyboardEvent(type, {
+                key: key,
+                bubbles: true,
+                cancelable: true
+            });
+
+            // Older code may read keyCode / which / charCode
+            try {
+                Object.defineProperty(ev, "keyCode", { get: () => code });
+                Object.defineProperty(ev, "which",   { get: () => code });
+                Object.defineProperty(ev, "charCode",{
+                    get: () => (type === "keypress" ? code : 0)
+                });
+            } catch (e) {
+                // Some browsers may not allow redefining; ignore.
+            }
+
+            document.dispatchEvent(ev);
+        });
+    }
+
+    // Type a full line and press Enter at the end
+    function typeLine(line) {
+        // Ensure focus is on the emulator (best-effort)
+        focusDisplay();
 
         for (let i = 0; i < line.length; i++) {
-            const ch = line.charCodeAt(i);
-            input.injectChar(ch);
+            sendChar(line[i]);
         }
+        // Send carriage return
+        sendChar("\r");
     }
 
-    //
-    // Main LOD loading routine
-    //
-    function loadLOD(machine, text) {
-        const raw = text.replace(/\r\n/g, "\r").replace(/\n/g, "\r");
-        const lines = raw.split("\r").map(l => l.trim()).filter(l => l.length);
-
-        let runAddress = null;
-
-        for (const line of lines) {
-            // Detect .XXXXG auto-run command
-            const match = line.match(/^\.(\w+)G$/i);
-            if (match) {
-                runAddress = match[1];
+    // Try to focus the C1P display so it receives key events.
+    function focusDisplay() {
+        // Try a few likely candidates; this is best-effort only.
+        const selectors = [
+            ".pcjs-display",
+            ".machine.c1p canvas",
+            ".machine.c1p",
+            "canvas"
+        ];
+        for (const sel of selectors) {
+            const el = document.querySelector(sel);
+            if (el && typeof el.focus === "function") {
+                try {
+                    el.focus();
+                    return;
+                } catch (e) {}
             }
-            injectLine(machine, line);
         }
-
-        // Auto-run if .XXXXG was found
-        if (runAddress) {
-            const cmd = `.${runAddress}G`;
-            injectLine(machine, cmd);
-        }
-
-        console.log("LOD Loader: Program loaded");
     }
 
-    //
-    // Add UI button + hidden file input
-    //
-    function addUI(machine) {
-        const container = document.querySelector(".machine.c1p");
-        if (!container) {
-            console.error("LOD Loader: C1P container not found");
+    // ---- Main LOD loading sequence ----
+    function loadLODFromText(text) {
+        const lines = parseLODText(text);
+        if (!lines.length) {
+            alert("LOD Loader: no lines found in file.");
             return;
         }
 
-        // Create wrapper
-        const wrapper = document.createElement("div");
-        wrapper.style.margin = "10px 0";
+        log("Loading LOD program with " + lines.length + " lines…");
 
-        // Button
+        // Type each line with a small delay to avoid overwhelming the emulator.
+        let index = 0;
+
+        function step() {
+            if (index >= lines.length) {
+                log("LOD program finished.");
+                return;
+            }
+            const line = lines[index++];
+            log("Typing: " + line);
+            typeLine(line);
+
+            // Adjust delay if needed; 20–50 ms is usually fine.
+            setTimeout(step, 30);
+        }
+
+        step();
+    }
+
+    // ---- UI creation ----
+    function createUI() {
+        // Find the C1P machine container
+        // We look for the first .machine that also mentions "Challenger 1P" nearby.
+        let container = document.querySelector(".machine.c1p");
+        if (!container) {
+            // Fallback: first .machine on the page
+            container = document.querySelector(".machine");
+        }
+        if (!container) {
+            log("C1P container not found; UI not installed.");
+            return;
+        }
+
+        // We will place our controls just above the machine container
+        const toolbar = document.createElement("div");
+        toolbar.style.margin = "8px 0";
+        toolbar.style.display = "flex";
+        toolbar.style.gap = "8px";
+        toolbar.style.alignItems = "center";
+
         const button = document.createElement("button");
         button.textContent = "Load .LOD Program";
-        button.style.padding = "6px 12px";
-        button.style.fontSize = "14px";
+        button.style.padding = "4px 10px";
+        button.style.fontSize = "13px";
         button.style.cursor = "pointer";
 
-        // Hidden file input
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = ".lod";
-        input.style.display = "none";
+        const note = document.createElement("span");
+        note.textContent = " (wait for BASIC 'OK' before loading)";
+        note.style.fontSize = "11px";
+        note.style.fontStyle = "italic";
 
-        // Button click → open file picker
-        button.onclick = () => input.click();
+        const fileInput = document.createElement("input");
+        fileInput.type = "file";
+        fileInput.accept = ".lod";
+        fileInput.style.display = "none";
 
-        // File select → load .lod file
-        input.onchange = evt => {
+        button.addEventListener("click", () => {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener("change", (evt) => {
             const file = evt.target.files[0];
             if (!file) return;
             const reader = new FileReader();
-            reader.onload = e => loadLOD(machine, e.target.result);
+            reader.onload = e => {
+                loadLODFromText(e.target.result);
+            };
             reader.readAsText(file);
-        };
+        });
 
-        wrapper.appendChild(button);
-        wrapper.appendChild(input);
-        container.parentNode.insertBefore(wrapper, container);
+        toolbar.appendChild(button);
+        toolbar.appendChild(note);
+        toolbar.appendChild(fileInput);
 
-        console.log("LOD Loader: UI installed");
+        // Insert toolbar before the machine container
+        container.parentNode.insertBefore(toolbar, container);
+
+        log("UI installed.");
     }
 
-    //
-    // URL Loader support
-    // ?lod=/path/to/file.lod&autoStart=true
-    //
-    function checkURLLoader(machine) {
+    // ---- Optional URL-based preloading (manual trigger) ----
+    // This does NOT auto-run by itself; it preloads the text so that when the user
+    // clicks "Load .LOD Program (URL)", the program is injected.
+    let preloadedLODText = null;
+
+    function checkURLPreload() {
+        if (!window.URLSearchParams) return;
         const params = new URLSearchParams(window.location.search);
         if (!params.has("lod")) return;
 
         const url = params.get("lod");
-        const autoStart = params.get("autoStart") === "true";
+        if (!url) return;
 
         fetch(url)
             .then(res => res.text())
             .then(text => {
-                loadLOD(machine, text);
-                if (autoStart) {
-                    console.log("LOD Loader: autoStart enabled");
-                }
+                preloadedLODText = text;
+                log("Preloaded LOD from URL: " + url);
+                alert("LOD Loader: LOD file preloaded from URL.\n\n" +
+                      "Start the emulator, wait for BASIC 'OK', then use the\n" +
+                      "\"Load .LOD Program\" button and choose the local file.\n\n" +
+                      "(Full automatic URL loading can be added later with\n" +
+                      "more knowledge of PCjs internals.)");
             })
-            .catch(err => console.error("LOD Loader URL error:", err));
+            .catch(err => {
+                console.error("LOD Loader URL error:", err);
+            });
     }
 
-    //
-    // Boot sequence
-    //
-    waitForMachine(() => {
-        const id = Object.keys(window.pcjsMachines)[0];
-        const machine = window.pcjsMachines[id];
-        if (!machine) {
-            console.error("LOD Loader: machine not found");
-            return;
+    // ---- Bootstrapping ----
+    function initWhenReady() {
+        if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", () => {
+                createUI();
+                checkURLPreload();
+            });
+        } else {
+            createUI();
+            checkURLPreload();
         }
+    }
 
-        addUI(machine);
-        checkURLLoader(machine);
-
-        console.log("LOD Loader initialized");
-    });
+    initWhenReady();
 
 })();
