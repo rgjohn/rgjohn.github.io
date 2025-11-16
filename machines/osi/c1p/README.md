@@ -149,5 +149,3 @@ C1Pjs is built from the following components, as listed in [machines.json](/mach
   - [debugger.js](modules/v2/debugger.js)
   - [computer.js](modules/v2/computer.js)
 
-<!-- C1P LOD Loader extension jw and chatgpt 16/11/2025-->
-<script src="/machines/osi/c1p/extensions/lod-loader.js"></script>
