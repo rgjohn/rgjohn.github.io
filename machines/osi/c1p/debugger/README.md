@@ -24,7 +24,3 @@ The instruction frequency ("f") and history ("p") commands collect data only whi
 running (not stepping) and one or more breakpoints have been set; set a dummy execution breakpoint
 (eg, "bp 0") to enable collection.
 
-C1P LOD Loader extension jw and chatgpt 16/11/2025
-
-<!-- C1P LOD Loader extension jw and chatgpt 16/11/2025 -->
-<script src="/machines/osi/c1p/extensions/lod-loader.js"></script>
