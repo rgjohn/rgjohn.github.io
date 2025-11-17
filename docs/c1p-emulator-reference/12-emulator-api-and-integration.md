@@ -224,34 +224,86 @@ Extensions can safely append UI elements below the panel:
 const machineEl = document.querySelector(".pcjs-machine");
 machineEl.parentNode.appendChild(newElement);
 
+Revised Section 12.11 — Safe Extensions Pattern (Recommended)
+
+(drop-in replacement text for the manual)
+
 12.11 Safe Extensions Pattern (Recommended)
 
-You should never modify PCjs core files.
+To ensure the emulator remains maintainable and update-safe, no custom code should ever be added directly to PCjs core files.
 
-Instead, use:
+Instead, the recommended pattern is:
 
-_includes/machine.html
+12.11.1 Single stable include in _includes/machine.html
+
+The only modification to PCjsʼs _includes/machine.html should be one always-present, never-changing line:
+
+<script src="{{ site.baseurl }}/c1p_extensions_jw/machine_html_extensions_jw.js"></script>
 
 
-to load custom scripts:
+This file acts as a master loader for all custom extensions.
 
+You should rarely (if ever) edit _includes/machine.html again.
+
+12.11.2 Master extension loader file
+
+Create:
+
+c1p_extensions_jw/machine_html_extensions_jw.js
+
+
+This file contains simple loader directives:
+
+<!-- This file acts as a "plugin loader" for all custom extensions -->
 <script src="{{ site.baseurl }}/c1p_extensions_jw/machine_html_lod_loader.js"></script>
+<script src="{{ site.baseurl }}/c1p_extensions_jw/machine_html_video_tools.js"></script>
+<script src="{{ site.baseurl }}/c1p_extensions_jw/machine_html_serial_tools.js"></script>
+<script src="{{ site.baseurl }}/c1p_extensions_jw/machine_html_breakpoints.js"></script>
+<!-- Future extensions go here -->
 
 
-Then place all extensions under:
+Each extension lives in its own independent JS file.
+
+12.11.3 Benefits of this approach
+✔ machine.html never needs modification again
+
+No risk of merge conflicts, mistakes, or breaking downstream builds.
+
+✔ Extensions are fully modular
+
+Add/remove features by adding/removing a <script> tag inside the master loader.
+
+✔ Naming is predictable
+
+Everything lives inside:
 
 /c1p_extensions_jw/
 
+✔ Works with GitHub Pages
 
-This ensures:
+All scripts load sequentially in the correct order.
 
-clean isolation
+✔ Debugging is easier
 
-easy maintenance
+A broken extension cannot break the emulator page:
+it will only break itself.
 
-no merge issues
+🔧 Optional Improvement (Advanced)
 
-consistent load order
+Eventually you can replace the <script> tags with a dynamic loader:
+
+[
+  "machine_html_lod_loader.js",
+  "machine_html_video_tools.js",
+  "machine_html_serial_tools.js"
+].forEach(f => {
+    let s = document.createElement("script");
+    s.src = `${window.location.origin}/c1p_extensions_jw/${f}`;
+    document.head.appendChild(s);
+});
+
+
+But for now, simple HTML <script> includes are perfect.
 
 12.12 Memory Map Integration
 
