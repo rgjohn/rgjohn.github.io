@@ -306,24 +306,27 @@ console.log("[TEST] machine.html script executed");
 
 <script>
 (function() {
-    console.log("[HELLO] DOM injection test running");
+    console.log("[HELLO] Universal loader test running");
 
-    // Find the machine div
-    var machineEl = document.getElementById("c1p8k-debugger.machine");
+    // Find the machine container on ANY PCjs emulator page.
+    var machineEl = document.querySelector(".pcjs-machine");
     console.log("[HELLO] machineEl =", machineEl);
 
     if (machineEl) {
+        // Create the loader placeholder
         var hello = document.createElement("div");
-        hello.textContent = "HELLO WORLD — inserted from machine.html";
+        hello.textContent = "UNIVERSAL HELLO WORLD — from machine.html";
         hello.style.background = "yellow";
         hello.style.padding = "1em";
         hello.style.marginTop = "1em";
         hello.style.fontWeight = "bold";
 
+        // Append AFTER the emulator panel
         machineEl.parentNode.appendChild(hello);
     }
 })();
 </script>
+
 
 
 {{ machine_errors }}
