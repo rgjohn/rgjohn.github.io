@@ -300,59 +300,6 @@
 <p class="machine-error">{{ machine_name }} does not exist: {{ include.id }}</p>
 {%- endif -%}
 
-<script>
-console.log("[TEST] machine.html script executed");
-</script>
-
-<script>
-(function() {
-    console.log("[LOD] Loader skeleton running");
-
-    // Find the machine container for ANY PCjs emulator page
-    var machineEl = document.querySelector(".pcjs-machine");
-    console.log("[LOD] machineEl =", machineEl);
-
-    if (!machineEl) return;
-
-    // Outer loader box
-    var box = document.createElement("div");
-    box.style.border = "2px solid #888";
-    box.style.padding = "1em";
-    box.style.marginTop = "1.5em";
-    box.style.background = "#f2f2f2";
-    box.style.fontFamily = "monospace";
-
-    // Title
-    var title = document.createElement("div");
-    title.textContent = "Load OSI C1P .LOD Program";
-    title.style.fontWeight = "bold";
-    title.style.marginBottom = "0.75em";
-    box.appendChild(title);
-
-    // File input
-    var fileInput = document.createElement("input");
-    fileInput.type = "file";
-    fileInput.accept = ".lod,.txt";
-    fileInput.style.marginBottom = "0.75em";
-    box.appendChild(fileInput);
-
-    // Preview area (empty for now)
-    var preview = document.createElement("pre");
-    preview.textContent = "(file contents will appear here)";
-    preview.style.whiteSpace = "pre-wrap";
-    preview.style.background = "#fff";
-    preview.style.padding = "0.5em";
-    preview.style.border = "1px solid #ccc";
-    preview.style.height = "10em";
-    preview.style.overflowY = "auto";
-    box.appendChild(preview);
-
-    // Insert box after emulator
-    machineEl.parentNode.appendChild(box);
-})();
-</script>
-
-
-
+<script src="{{ site.baseurl }}/c1p_extensions_jw/machine_html_lod_loader.js"></script>
 
 {{ machine_errors }}
