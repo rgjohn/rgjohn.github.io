@@ -5,6 +5,7 @@ permalink: /machines/osi/c1p/debugger/
 machines:
   - id: c1p8k-debugger
     type: c1p
+    uncompiled: true
 ---
 
 C1Pjs is a JavaScript simulation of the [Ohio Scientific Challenger 1P](/machines/osi/c1p/),
