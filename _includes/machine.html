@@ -299,4 +299,8 @@
 {%- if machine_does_not_exist -%}
 <p class="machine-error">{{ machine_name }} does not exist: {{ include.id }}</p>
 {%- endif -%}
+<script>
+console.log("[TEST] machine.html script executed");
+</script>
+
 {{ machine_errors }}
