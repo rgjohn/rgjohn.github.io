@@ -13,6 +13,7 @@ preview: images/screenshot.png
 machines:
   - id: c1p8k
     type: c1p
+    uncompiled: true
 ---
 
 C1Pjs is a JavaScript simulation of the Ohio Scientific Challenger 1P, an 8-bit 6502-based microcomputer
