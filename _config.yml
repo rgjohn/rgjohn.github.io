@@ -75,4 +75,7 @@ archive:
   kb:
     server: https://jeffpar.github.io/kbarchive
 
-# trigger build jw - second try 15/11/2025
+#  added by jw -  17/11/2025
+pcjs:
+  uncompiled: true
+
