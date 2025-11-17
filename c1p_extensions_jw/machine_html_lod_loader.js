@@ -49,6 +49,14 @@ console.log("[LOD] UI + Loader extension script running");
         preview.style.overflowY = "auto";
         box.appendChild(preview);
 
+        // ---------- Add SCREEN TEST button ----------
+        const screenBtn = document.createElement("button");
+        screenBtn.textContent = "SCREEN TEST";
+        screenBtn.id = "lod-screen-test";
+        screenBtn.style.marginTop = "0.5em";
+        screenBtn.style.marginBottom = "0.5em";
+        box.appendChild(screenBtn);
+
         // ---------- Hook into file selection ----------
         fileInput.addEventListener("change", function(ev) {
             const file = ev.target.files?.[0];
@@ -66,6 +74,33 @@ console.log("[LOD] UI + Loader extension script running");
         machineEl.parentNode.appendChild(box);
 
         console.log("[LOD] Loader UI successfully inserted");
+
+        // ---------- SCREEN TEST functionality ----------
+        document.getElementById("lod-screen-test").addEventListener("click", () => {
+            console.log("[LOD] Screen test button clicked");
+
+            // Locate RAM
+            let ram = PCjs.components.find(c => c.id.includes(".ram8K"));
+            if (!ram) {
+                console.error("[LOD] ERROR: RAM component not found");
+                return;
+            }
+
+            const VIDEO_BASE = 0xD060;
+            const SCREEN_COLS = 32;
+
+            function writeChar(row, col, ascii) {
+                ram.abMem[VIDEO_BASE + row * SCREEN_COLS + col] = ascii;
+            }
+
+            // Write HELLO
+            const text = "HELLO";
+            for (let i = 0; i < text.length; i++) {
+                writeChar(0, i, text.charCodeAt(i));
+            }
+
+            console.log("[LOD] HELLO written to screen RAM");
+        });
     }
 
     initWhenReady();
