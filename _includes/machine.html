@@ -306,26 +306,52 @@ console.log("[TEST] machine.html script executed");
 
 <script>
 (function() {
-    console.log("[HELLO] Universal loader test running");
+    console.log("[LOD] Loader skeleton running");
 
-    // Find the machine container on ANY PCjs emulator page.
+    // Find the machine container for ANY PCjs emulator page
     var machineEl = document.querySelector(".pcjs-machine");
-    console.log("[HELLO] machineEl =", machineEl);
+    console.log("[LOD] machineEl =", machineEl);
 
-    if (machineEl) {
-        // Create the loader placeholder
-        var hello = document.createElement("div");
-        hello.textContent = "UNIVERSAL HELLO WORLD — from machine.html";
-        hello.style.background = "yellow";
-        hello.style.padding = "1em";
-        hello.style.marginTop = "1em";
-        hello.style.fontWeight = "bold";
+    if (!machineEl) return;
 
-        // Append AFTER the emulator panel
-        machineEl.parentNode.appendChild(hello);
-    }
+    // Outer loader box
+    var box = document.createElement("div");
+    box.style.border = "2px solid #888";
+    box.style.padding = "1em";
+    box.style.marginTop = "1.5em";
+    box.style.background = "#f2f2f2";
+    box.style.fontFamily = "monospace";
+
+    // Title
+    var title = document.createElement("div");
+    title.textContent = "Load OSI C1P .LOD Program";
+    title.style.fontWeight = "bold";
+    title.style.marginBottom = "0.75em";
+    box.appendChild(title);
+
+    // File input
+    var fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = ".lod,.txt";
+    fileInput.style.marginBottom = "0.75em";
+    box.appendChild(fileInput);
+
+    // Preview area (empty for now)
+    var preview = document.createElement("pre");
+    preview.textContent = "(file contents will appear here)";
+    preview.style.whiteSpace = "pre-wrap";
+    preview.style.background = "#fff";
+    preview.style.padding = "0.5em";
+    preview.style.border = "1px solid #ccc";
+    preview.style.height = "10em";
+    preview.style.overflowY = "auto";
+    box.appendChild(preview);
+
+    // Insert box after emulator
+    machineEl.parentNode.appendChild(box);
 })();
 </script>
+
 
 
 
