@@ -304,4 +304,26 @@
 console.log("[TEST] machine.html script executed");
 </script>
 
+<script>
+(function() {
+    console.log("[HELLO] DOM injection test running");
+
+    // Find the machine div
+    var machineEl = document.getElementById("c1p8k-debugger.machine");
+    console.log("[HELLO] machineEl =", machineEl);
+
+    if (machineEl) {
+        var hello = document.createElement("div");
+        hello.textContent = "HELLO WORLD — inserted from machine.html";
+        hello.style.background = "yellow";
+        hello.style.padding = "1em";
+        hello.style.marginTop = "1em";
+        hello.style.fontWeight = "bold";
+
+        machineEl.parentNode.appendChild(hello);
+    }
+})();
+</script>
+
+
 {{ machine_errors }}
