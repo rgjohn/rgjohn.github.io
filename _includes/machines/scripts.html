@@ -271,3 +271,79 @@ template doesn't add them to the Computer component anymore, since we started su
     <script>addStickyMachine('{{ machine_id }}');</script>
   {%- endif %}
 {%- endfor %}
+
+<script> // script appended by jw and chatgpt to implement a .lod file loader 17/11/2025
+(function() {
+    // Only run on the C1P debugger page
+    if (!window.location || window.location.pathname !== "/machines/osi/c1p/debugger/") return;
+    if (typeof commandMachine !== "function") return;
+
+    // Find the debugger machine container
+    var machineEl = document.getElementById("c1p8k-debugger.machine");
+    if (!machineEl || !machineEl.parentNode) return;
+
+    // Create the LOD loader UI panel
+    var panel = document.createElement("div");
+    panel.id = "lod-loader";
+    panel.style.marginTop = "1em";
+    panel.style.padding = "0.5em";
+    panel.style.border = "1px solid #ccc";
+    panel.style.fontFamily = "sans-serif";
+    panel.style.fontSize = "0.9em";
+
+    panel.innerHTML =
+        '<strong>Load OSI C1P .LOD Program</strong><br>' +
+        '<input type="file" id="lodFile" accept=".lod,.txt">' +
+        '<button id="lodLoadButton">Load .LOD</button>' +
+        '<span id="lodStatus" style="margin-left:1em; color:#555;"></span>';
+
+    // Append the panel *after* the machine container
+    machineEl.parentNode.appendChild(panel);
+
+    var fileInput = panel.querySelector("#lodFile");
+    var button    = panel.querySelector("#lodLoadButton");
+    var status    = panel.querySelector("#lodStatus");
+    var idMachine = "c1p8k-debugger";   // from DOM id "c1p8k-debugger.machine"
+
+    function normalizeLOD(text) {
+        // Convert CRLF -> CR and LF -> CR, ensure final CR
+        text = text.replace(/\r\n/g, "\r").replace(/\n/g, "\r");
+        if (!text.endsWith("\r")) text += "\r";
+        return text;
+    }
+
+    function loadLOD(text) {
+        var lod = normalizeLOD(text);
+        // Use the built-in script processor via commandMachine()
+        // control (dummy) , fSingle=false, idMachine, sComponent=null, sCommand="script", sValue=lod
+        commandMachine({ disabled: false }, false, idMachine, null, "script", lod);
+    }
+
+    button.addEventListener("click", function() {
+        if (!fileInput.files || !fileInput.files.length) {
+            status.textContent = "Select a .LOD file first.";
+            return;
+        }
+
+        var file = fileInput.files[0];
+        var reader = new FileReader();
+
+        status.textContent = "Loading...";
+
+        reader.onload = function(ev) {
+            try {
+                loadLOD(String(ev.target.result || ""));
+                status.textContent = "LOD loaded (monitor should now be executing).";
+            } catch (e) {
+                status.textContent = "Error: " + e;
+            }
+        };
+
+        reader.onerror = function() {
+            status.textContent = "Error reading file.";
+        };
+
+        reader.readAsText(file);
+    });
+})();
+</script>
