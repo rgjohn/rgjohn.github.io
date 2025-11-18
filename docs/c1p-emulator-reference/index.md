@@ -29,3 +29,4 @@ It includes:
 9. [Development Tools](09-development-tools.md)  
 10. [Testing & Debugging Techniques](10-testing-and-debugging.md)  
 11. [TODO & Roadmap](11-todo-and-roadmap.md)  
+12. [C1P Emulator Developer API & Integration Guide](12-emulator-api-and-integration.md)  
