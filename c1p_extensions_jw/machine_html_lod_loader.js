@@ -108,6 +108,10 @@ console.log("[LOD] UI + Loader extension script running");
 
         console.log("[LOD] Machine element found:", machineEl);
 
+        // Machine ID is like "c1p8k-debugger.machine" → strip ".machine"
+        const machineId = machineEl.id.replace(/\.machine$/, "");
+        console.log("[LOD] Machine ID:", machineId);
+
         // Prevent double-insertion
         if (document.getElementById("lod-loader-box")) {
             console.log("[LOD] Loader UI already exists — skipping");
@@ -154,6 +158,22 @@ console.log("[LOD] UI + Loader extension script running");
         loadBtn.style.cursor = "pointer";
         box.appendChild(loadBtn);
 
+        // ---------- AUTO-RUN checkbox ----------
+        const autorunLabel = document.createElement("label");
+        autorunLabel.style.marginLeft = "1em";
+        autorunLabel.style.fontSize = "0.9em";
+
+        const autorunCheckbox = document.createElement("input");
+        autorunCheckbox.type = "checkbox";
+        autorunCheckbox.id = "lod-autorun";
+        autorunCheckbox.checked = true;
+        autorunCheckbox.style.marginLeft = "0.5em";
+
+        autorunLabel.appendChild(autorunCheckbox);
+        autorunLabel.appendChild(document.createTextNode(" Auto-run after load"));
+
+        box.appendChild(autorunLabel);
+
         // ---------- LOAD LOGIC ----------
         loadBtn.addEventListener("click", function () {
             const text = preview.textContent.trim();
@@ -161,49 +181,50 @@ console.log("[LOD] UI + Loader extension script running");
                 alert("No .LOD text loaded.");
                 return;
             }
-        
-            console.log("[LOD] Parsing LOD text...");
-        
+
+            console.log("[LOD] Parsing LOD text for LOAD TO RAM...");
+
             const lines = text
                 .replace(/\r\n/g, "\r")
                 .replace(/\n/g, "\r")
                 .split("\r")
                 .map(l => l.trim())
                 .filter(l => l !== "");
-        
+
             // Find RAM component
             const ram = PCjs.components.find(c => c.id.endsWith(".ram8K"));
             if (!ram) {
                 alert("Could not find RAM component");
+                console.error("[LOD] RAM component (.ram8K) not found");
                 return;
             }
-        
+
             let execAddress = null;
-        
+
             for (let line of lines) {
-        
+
                 // Must start with a dot
                 if (!line.startsWith(".")) continue;
-        
+
                 // Example: .0200/A9 41 8D 00 D0
                 const addrMatch = line.match(/^\.([0-9A-Fa-f]{4})/);
                 if (!addrMatch) continue;
-        
+
                 let addr = parseInt(addrMatch[1], 16);
-        
+
                 // Execution command?
                 if (line.endsWith("G") || line.match(/G\s*$/)) {
                     execAddress = addr;
                     console.log("[LOD] Found G execution address:", execAddress.toString(16));
                     continue;
                 }
-        
+
                 // Load command?
                 const slashPos = line.indexOf("/");
                 if (slashPos >= 0) {
                     const bytesPart = line.substring(slashPos + 1).trim();
                     const byteTokens = bytesPart.split(/\s+/);
-        
+
                     for (let tok of byteTokens) {
                         if (!tok.match(/^[0-9A-Fa-f]{2}$/)) continue;
                         const byte = parseInt(tok, 16);
@@ -211,23 +232,57 @@ console.log("[LOD] UI + Loader extension script running");
                     }
                 }
             }
-        
+
             console.log("[LOD] Load completed.");
-        
+
             if (execAddress !== null) {
-                alert(`Load complete. Program entry: $${execAddress.toString(16).toUpperCase()}`);
-                // Auto-run will be added next phase.
+                const addrHex = execAddress.toString(16).toUpperCase().padStart(4, "0");
+                console.log("[LOD] Program entry address:", addrHex);
+
+                if (autorunCheckbox.checked) {
+                    // AUTO-RUN via monitor script
+                    if (typeof commandMachine === "function") {
+                        const script = "." + addrHex + "G\r";
+                        console.log("[LOD] Auto-running via commandMachine script:", script);
+
+                        try {
+                            const ok = commandMachine(
+                                null,
+                                false,
+                                machineId,
+                                null,          // no specific component, use global script
+                                "script",
+                                script
+                            );
+                            console.log("[LOD] commandMachine(script) returned:", ok);
+                        } catch (e) {
+                            console.error("[LOD] Error during auto-run:", e);
+                            alert("Load complete, but auto-run failed (see console).");
+                            return;
+                        }
+
+                        alert(`Load complete. Auto-running from $${addrHex}.`);
+                        return;
+                    } else {
+                        console.warn("[LOD] commandMachine is not available — cannot autorun");
+                        alert(`Load complete. Program entry at $${addrHex}, but auto-run is unavailable.`);
+                        return;
+                    }
+                }
+
+                // No auto-run, just inform the user
+                alert(`Load complete. Program entry: $${addrHex}`);
             } else {
-                alert("Load complete.");
+                alert("Load complete (no .XXXXG entry point found).");
             }
         });
 
-        
         // ---------- Add SCREEN TEST button ----------
         const screenBtn = document.createElement("button");
         screenBtn.textContent = "SCREEN TEST";
         screenBtn.id = "lod-screen-test";
-        screenBtn.style.marginTop = "0.5em";
+        screenBtn.style.display = "block";
+        screenBtn.style.marginTop = "0.75em";
         screenBtn.style.marginRight = "0.5em";
         box.appendChild(screenBtn);
 
