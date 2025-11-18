@@ -246,14 +246,16 @@ console.log("[LOD] UI + Loader extension script running");
                         console.log("[LOD] Auto-running via commandMachine script:", script);
 
                         try {
-                            const ok = commandMachine(
-                                null,
-                                false,
-                                machineId,
-                                null,          // no specific component, use global script
-                                "script",
-                                script
-                            );
+                            // Find debugger component
+                            const dbg = PCjs.components.find(c => c.id.endsWith(".debugger"));
+                            if (!dbg || !dbg.exports || typeof dbg.exports.runScript !== "function") {
+                                console.warn("[LOD] No debugger.runScript() found — cannot autorun");
+                            } else {
+                                const script = "." + addrHex + "G\n";   // actual monitor input
+                                console.log("[LOD] Auto-running via debugger.runScript:", script);
+                                dbg.exports.runScript(script);
+                            }
+
                             console.log("[LOD] commandMachine(script) returned:", ok);
                         } catch (e) {
                             console.error("[LOD] Error during auto-run:", e);
