@@ -3,17 +3,16 @@ console.log("[LOD] UI + Loader extension script running");
 (function() {
 
     // ---------------------------------------------------------------
-    // LOD PARSER — parse text into {addr, bytes[]} blocks
+    // LOD PARSER — Extract blocks { addr, bytes[] }
     // ---------------------------------------------------------------
     function parseLOD(text) {
         if (!text || typeof text !== "string") return [];
 
-        // Normalize CRLF/CR/LF → LF
+        // Normalize all line endings → LF
         text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-
         const lines = text.split("\n");
-        const blocks = [];
 
+        const blocks = [];
         let currentAddr = null;
         let currentBytes = [];
 
@@ -29,18 +28,19 @@ console.log("[LOD] UI + Loader extension script running");
             let line = (raw || "").trim();
             if (!line) continue;
 
-            // ".0200G"
+            // End marker like ".0222G"
             if (/^\.[0-9A-Fa-f]+G$/i.test(line)) {
                 finishBlock();
                 continue;
             }
 
-            // ".0200/...."
+            // Start of block: ".0222/" or ".0222/A9 41 ..."
             if (/^\.[0-9A-Fa-f]+\/?/i.test(line)) {
                 finishBlock();
 
                 const addrMatch = line.match(/^\.(\w+)/);
                 if (!addrMatch) continue;
+
                 currentAddr = parseInt(addrMatch[1], 16);
                 if (isNaN(currentAddr)) {
                     currentAddr = null;
@@ -49,20 +49,20 @@ console.log("[LOD] UI + Loader extension script running");
                 }
 
                 let slashPos = line.indexOf("/");
-                let afterSlash = slashPos >= 0 ? line.substring(slashPos + 1).trim() : "";
+                let payload = slashPos >= 0 ? line.substring(slashPos + 1).trim() : "";
 
-                // ".0200/A9 ... G" on same line
+                // If line ends with G, remove it
                 let hasG = false;
-                if (afterSlash.endsWith("G") || afterSlash.endsWith("g")) {
+                if (/G$/i.test(payload)) {
                     hasG = true;
-                    afterSlash = afterSlash.slice(0, -1).trim();
+                    payload = payload.slice(0, -1).trim();
                 }
 
-                if (afterSlash) {
-                    afterSlash.split(/[\s,]+/).forEach(tok => {
-                        if (/^[0-9A-F]{2}$/i.test(tok)) {
+                // Extract hex byte tokens
+                if (payload.length > 0) {
+                    payload.split(/[\s,]+/).forEach(tok => {
+                        if (/^[0-9A-Fa-f]{2}$/.test(tok))
                             currentBytes.push(parseInt(tok, 16));
-                        }
                     });
                 }
 
@@ -70,11 +70,10 @@ console.log("[LOD] UI + Loader extension script running");
                 continue;
             }
 
-            // Plain data lines
+            // Plain data line: bytes only
             line.split(/[\s,]+/).forEach(tok => {
-                if (/^[0-9A-F]{2}$/i.test(tok)) {
+                if (/^[0-9A-Fa-f]{2}$/.test(tok))
                     currentBytes.push(parseInt(tok, 16));
-                }
             });
         }
 
@@ -94,17 +93,20 @@ console.log("[LOD] UI + Loader extension script running");
 
         console.log("[LOD] Machine element found:", machineEl);
 
+        // Prevent double insertion
         if (document.getElementById("lod-loader-box")) {
-            console.log("[LOD] Loader UI already exists — skipping");
+            console.log("[LOD] Loader already exists — skipping");
             return;
         }
 
-        const machineId = machineEl.id.replace(".machine", "");
-        console.log("[LOD] Machine ID:", machineId);
+        // Extract machine ID (e.g., "c1p8k-debugger.machine")
+        const machineID = machineEl.id || "";
+        const cleanMachineID = machineID.replace(".machine", "");
+        console.log("[LOD] Machine ID:", cleanMachineID);
 
-        // ---------------------------------------------------------------
-        // Build UI panel
-        // ---------------------------------------------------------------
+        // -----------------------------------------------------------
+        // BUILD UI PANEL
+        // -----------------------------------------------------------
         const box = document.createElement("div");
         box.id = "lod-loader-box";
         box.style.border = "2px solid #888";
@@ -135,11 +137,12 @@ console.log("[LOD] UI + Loader extension script running");
         preview.style.overflowY = "auto";
         box.appendChild(preview);
 
-        // LOAD TO RAM button
+        // LOAD TO RAM
         const loadBtn = document.createElement("button");
         loadBtn.textContent = "LOAD TO RAM";
         loadBtn.style.marginTop = "0.75em";
         loadBtn.style.padding = "0.25em 1em";
+        loadBtn.style.fontFamily = "monospace";
         loadBtn.style.cursor = "pointer";
         box.appendChild(loadBtn);
 
@@ -147,27 +150,25 @@ console.log("[LOD] UI + Loader extension script running");
         const screenBtn = document.createElement("button");
         screenBtn.textContent = "SCREEN TEST";
         screenBtn.style.marginLeft = "0.75em";
+        screenBtn.style.padding = "0.25em 1em";
         box.appendChild(screenBtn);
 
-        // PARSE LOD button
+        // PARSE LOD
         const parseBtn = document.createElement("button");
         parseBtn.textContent = "PARSE LOD";
         parseBtn.style.marginLeft = "0.75em";
+        parseBtn.style.padding = "0.25em 1em";
         box.appendChild(parseBtn);
 
-        // ---------------------------------------------------------------
-        // Insert UI under emulator
-        // ---------------------------------------------------------------
         machineEl.parentNode.appendChild(box);
         console.log("[LOD] Loader UI successfully inserted");
 
-        // ===============================================================
-        // FILE LOADING
-        // ===============================================================
+        // -----------------------------------------------------------
+        // FILE LOAD
+        // -----------------------------------------------------------
         fileInput.addEventListener("change", ev => {
             const file = ev.target.files?.[0];
             if (!file) return;
-
             const reader = new FileReader();
             reader.onload = () => {
                 preview.textContent = reader.result;
@@ -176,114 +177,103 @@ console.log("[LOD] UI + Loader extension script running");
             reader.readAsText(file);
         });
 
-        // ===============================================================
-        // LOAD TO RAM — main logic
-        // ===============================================================
-        loadBtn.addEventListener("click", () => {
-            const text = preview.textContent.trim();
-            if (!text) {
-                alert("No .LOD text loaded.");
-                return;
-            }
-
-            console.log("[LOD] Parsing LOD text for LOAD TO RAM...");
-            const blocks = parseLOD(text);
-
-            if (!blocks.length) {
-                alert("Error: No valid .LOD blocks found.");
-                return;
-            }
-
-            // Find RAM
-            const ram = PCjs.components.find(c => c.id.endsWith(".ram8K"));
-            if (!ram) {
-                alert("ERROR: RAM component not found!");
-                return;
-            }
-
-            let execAddr = null;
-
-            // Write all blocks to RAM
-            for (let b of blocks) {
-                let addr = b.addr;
-                for (let byte of b.bytes) {
-                    ram.abMem[addr++] = byte;
-                }
-            }
-
-            // Detect an ending G
-            const endMatch = text.match(/\.(\w+)G/i);
-            if (endMatch) {
-                execAddr = parseInt(endMatch[1], 16);
-            }
-
-            console.log("[LOD] Load completed.");
-
-            if (execAddr !== null) {
-                console.log("[LOD] Program entry address:", execAddr.toString(16).toUpperCase());
-
-                // ---------------------------------------------------------------
-                // AUTO-RUN using debugger.runScript()
-                // ---------------------------------------------------------------
-                const dbg = PCjs.components.find(c => c.id.endsWith(".debugger"));
-
-                if (dbg && dbg.exports && typeof dbg.exports.runScript === "function") {
-                    const script = "." + execAddr.toString(16).toUpperCase().padStart(4, "0") + "G\n";
-                    console.log("[LOD] Auto-running via debugger.runScript:", script);
-
-                    dbg.exports.runScript(script);
-                } else {
-                    alert("Load complete, but auto-run unavailable (no debugger on this page).");
-                }
-            } else {
-                alert("Load complete.");
-            }
-        });
-
-        // ===============================================================
-        // SCREEN TEST
-        // ===============================================================
+        // -----------------------------------------------------------
+        // SCREEN TEST — write HELLO to VRAM
+        // -----------------------------------------------------------
         screenBtn.addEventListener("click", () => {
-            console.log("[LOD] Screen test button clicked");
+            let ram = PCjs.components.find(c => c.id.endsWith(".ram8K"));
+            if (!ram) return alert("RAM not found");
 
-            const ram = PCjs.components.find(c => c.id.includes(".ram8K"));
-            if (!ram) return;
-
-            const VIDEO = 0xD060;
+            const VIDEO = 0xD000;
             const COLS = 32;
 
             "HELLO".split("").forEach((ch, i) => {
                 ram.abMem[VIDEO + i] = ch.charCodeAt(0);
             });
 
-            console.log("[LOD] HELLO written to screen RAM");
+            console.log("[LOD] HELLO written to VRAM");
         });
 
-        // ===============================================================
-        // PARSE LOD — debug tool
-        // ===============================================================
+        // -----------------------------------------------------------
+        // PARSE LOD — preview parser output
+        // -----------------------------------------------------------
         parseBtn.addEventListener("click", () => {
-            const text = preview.textContent;
+            const text = preview.textContent || "";
             const blocks = parseLOD(text);
 
             if (!blocks.length) {
-                preview.textContent = "[PARSER] No valid LOD blocks found.\n\n" + text;
+                preview.textContent = "[PARSER] No valid LOD blocks.\n\n" + text;
                 return;
             }
 
-            let out = "[PARSER] Parsed " + blocks.length + " block(s):\n\n";
+            let out = "[PARSER] " + blocks.length + " block(s) found:\n\n";
             blocks.forEach((b, i) => {
-                const addrHex = b.addr.toString(16).toUpperCase().padStart(4, "0");
-                out += `Block ${i + 1}: $${addrHex}  (${b.bytes.length} bytes)\n`;
-
+                const a = b.addr.toString(16).toUpperCase().padStart(4, "0");
                 const sample = b.bytes.slice(0, 16)
-                    .map(v => v.toString(16).toUpperCase().padStart(2, "0"))
+                    .map(b => b.toString(16).toUpperCase().padStart(2, "0"))
                     .join(" ");
-                out += "  Sample: " + sample + (b.bytes.length > 16 ? " ..." : "") + "\n\n";
+                out += `Block ${i+1} @ $${a}, ${b.bytes.length} bytes\n  ${sample}${b.bytes.length>16?" ...":""}\n\n`;
             });
 
             preview.textContent = out;
         });
+
+        // -----------------------------------------------------------
+        // LOAD TO RAM + AUTO-RUN (debugger only)
+        // -----------------------------------------------------------
+        loadBtn.addEventListener("click", () => {
+            const text = preview.textContent.trim();
+            if (!text) return alert("No LOD text loaded.");
+
+            const blocks = parseLOD(text);
+            if (!blocks.length) return alert("No valid .LOD blocks found.");
+
+            // Find RAM
+            const ram = PCjs.components.find(c => c.id.endsWith(".ram8K"));
+            if (!ram) return alert("RAM component not found.");
+
+            // Write bytes
+            blocks.forEach(b => {
+                let addr = b.addr;
+                b.bytes.forEach(byte => {
+                    ram.abMem[addr++] = byte;
+                });
+            });
+
+            console.log("[LOD] Load complete.");
+
+            // FIND ANY ".XXXXG"
+            const gMatch = text.match(/\.(\w+)G/i);
+            let execAddr = gMatch ? parseInt(gMatch[1], 16) : null;
+
+            if (execAddr == null) {
+                alert("Load complete (no auto-run).");
+                return;
+            }
+
+            console.log("[LOD] Auto-run entry $" + execAddr.toString(16));
+
+            // -------------------------------------------------------
+            // Only auto-run if a debugger exists
+            // -------------------------------------------------------
+            const debugInput = document.querySelector("input.c1p-binding");
+            if (!debugInput) {
+                alert("Load complete, but auto-run unavailable (no debugger).");
+                return;
+            }
+
+            // Send "g 0222"
+            const cmd = "g " + execAddr.toString(16).padStart(4,"0");
+
+            debugInput.value = cmd;
+            debugInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+            const enterBtn = document.querySelector("button.pcjs-button[value='Enter'], button.pcjs-button");
+            if (enterBtn) enterBtn.click();
+
+            alert(`Load complete. Auto-running from $${execAddr.toString(16).toUpperCase()}.`);
+        });
+
     }
 
     initWhenReady();
