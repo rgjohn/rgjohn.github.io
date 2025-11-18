@@ -224,11 +224,9 @@ Extensions can safely append UI elements below the panel:
 const machineEl = document.querySelector(".pcjs-machine");
 machineEl.parentNode.appendChild(newElement);
 
-Revised Section 12.11 — Safe Extensions Pattern (Recommended)
+Revised Section 12.11 — Safe Extensions Pattern
 
-(drop-in replacement text for the manual)
-
-12.11 Safe Extensions Pattern (Recommended)
+12.11 Safe Extensions Pattern
 
 To ensure the emulator remains maintainable and update-safe, no custom code should ever be added directly to PCjs core files.
 
