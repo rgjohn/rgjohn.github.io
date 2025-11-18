@@ -145,6 +145,84 @@ console.log("[LOD] UI + Loader extension script running");
         preview.style.overflowY = "auto";
         box.appendChild(preview);
 
+        // ---------- LOAD TO RAM button ----------
+        const loadBtn = document.createElement("button");
+        loadBtn.textContent = "LOAD TO RAM";
+        loadBtn.style.marginTop = "0.75em";
+        loadBtn.style.padding = "0.25em 1em";
+        loadBtn.style.fontFamily = "monospace";
+        loadBtn.style.cursor = "pointer";
+        box.appendChild(loadBtn);
+
+        // ---------- LOAD LOGIC ----------
+        loadBtn.addEventListener("click", function () {
+            const text = preview.textContent.trim();
+            if (!text) {
+                alert("No .LOD text loaded.");
+                return;
+            }
+        
+            console.log("[LOD] Parsing LOD text...");
+        
+            const lines = text
+                .replace(/\r\n/g, "\r")
+                .replace(/\n/g, "\r")
+                .split("\r")
+                .map(l => l.trim())
+                .filter(l => l !== "");
+        
+            // Find RAM component
+            const ram = PCjs.components.find(c => c.id.endsWith(".ram8K"));
+            if (!ram) {
+                alert("Could not find RAM component");
+                return;
+            }
+        
+            let execAddress = null;
+        
+            for (let line of lines) {
+        
+                // Must start with a dot
+                if (!line.startsWith(".")) continue;
+        
+                // Example: .0200/A9 41 8D 00 D0
+                const addrMatch = line.match(/^\.([0-9A-Fa-f]{4})/);
+                if (!addrMatch) continue;
+        
+                let addr = parseInt(addrMatch[1], 16);
+        
+                // Execution command?
+                if (line.endsWith("G") || line.match(/G\s*$/)) {
+                    execAddress = addr;
+                    console.log("[LOD] Found G execution address:", execAddress.toString(16));
+                    continue;
+                }
+        
+                // Load command?
+                const slashPos = line.indexOf("/");
+                if (slashPos >= 0) {
+                    const bytesPart = line.substring(slashPos + 1).trim();
+                    const byteTokens = bytesPart.split(/\s+/);
+        
+                    for (let tok of byteTokens) {
+                        if (!tok.match(/^[0-9A-Fa-f]{2}$/)) continue;
+                        const byte = parseInt(tok, 16);
+                        ram.abMem[addr++] = byte;
+                    }
+                }
+            }
+        
+            console.log("[LOD] Load completed.");
+        
+            if (execAddress !== null) {
+                alert(`Load complete. Program entry: $${execAddress.toString(16).toUpperCase()}`);
+                // Auto-run will be added next phase.
+            } else {
+                alert("Load complete.");
+            }
+        });
+
+        
         // ---------- Add SCREEN TEST button ----------
         const screenBtn = document.createElement("button");
         screenBtn.textContent = "SCREEN TEST";
