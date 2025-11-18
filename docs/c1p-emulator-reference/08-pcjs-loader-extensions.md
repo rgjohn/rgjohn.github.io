@@ -1,203 +1,214 @@
-# 8. Custom PCjs Loader & UI Extensions
+8. Custom PCjs Loader & UI Extensions
 
-This section documents the custom enhancements added to the OSI C1P PCjs emulator, including program loaders, UI improvements, character generator options, and page layout modifications.
+This section documents all custom enhancements added to the OSI C1P PCjs emulator.
+These extensions are non-invasive, meaning they do not modify the PCjs core and exist entirely as external add-ons.
 
----
+Current completed extensions include:
 
-# 8.1 LOD Loader Extension
+A dynamic .LOD file loader UI
 
-The OSI C1P monitor supports a text-based hex load format called **.LOD files**, composed of:
+Automatic DOM injection below the emulator
 
-- Carriage-return (CR) terminated lines  
-- Loader directives beginning with `.`  
-- Slash (`/`) specifying byte-loading sequences  
-- A terminating `.XXXXG` to start program execution  
+A multi-stage .LOD parser
 
-Example:
-```
+Live RAM access and VRAM writing
+
+Program preview window
+
+Planned extensions include:
+
+URL-based autoloading
+
+Character set selector
+
+VRAM tools
+
+Memory inspector utilities
+
+Custom API bindings
+
+8.1 LOD Loader Extension (Completed Stage 1)
+
+The OSI C1P uses a monitor with a line-oriented hex loader format known as .LOD files.
+
+A typical example:
+
 .0200/A9 41 8D 00 E0
 .0200G
-```
 
-The PCjs C1P emulator already contains logic to simulate keyboard input and load bytes via the monitor.  
-The LOD Loader implements **native .lod program loading** using this mechanism.
 
----
+A .LOD file consists of:
 
-## 8.1.1 UI Button Loader
+A starting address (.XXXX/)
 
-A new button will be added to the emulator interface:
+A series of raw bytes (hex pairs)
 
-```
-Load .LOD Program…
-```
+Optional multiple blocks (each beginning with .XXXX/)
 
-### Features:
+A terminating .XXXXG to begin execution
 
-1. Opens a file picker allowing the user to choose a `.lod` file  
-2. Reads the file contents as ASCII text  
-3. Splits input on CR boundaries  
-4. Feeds each loader line into the emulator’s monitor  
-5. Detects `.XXXXG` and auto-executes if present  
-6. Uses **no PCjs core modifications** — implemented as a clean extension  
+✔ What has been implemented so far
 
----
+A new file:
 
-## 8.1.2 URL Loader
+c1p_extensions_jw/machine_html_lod_loader.js
 
-Programs can also be loaded automatically via URL parameters:
 
-```
-?lod=/path/to/program.lod&autoStart=true
-```
+is automatically included by _includes/machine.html and provides:
 
-Behavior:
+UI Features (Completed)
 
-1. The `.lod` file is fetched from the provided path  
-2. Loader text is parsed  
-3. Each line is injected into the monitor  
-4. If `autoStart=true`, execution begins automatically  
+A padded, styled box inserted directly under the emulator panel
 
-This mechanism parallels PCjs’s `autoMount` feature, but supports **pure .lod text** rather than JSON-based loaders.
+A file picker for .lod / .txt files
 
----
+A scrollable preview showing raw file text
 
-# 8.2 Character Generator (chargen) Extensions
+Robust DOM-retry logic until the emulator loads
 
-The OSI C1P character generator consists of a **16×16 table of 8×8 glyphs**.  
-PCjs renders characters by slicing one of the following images:
+Works on:
 
-- `chargen1x.png`
-- `chargen2x.png`
-- `chargen4x.png`
+/machines/osi/c1p/
 
-found in:
+/machines/osi/c1p/debugger/
 
-```
-machines/osi/c1p/video/
-```
+Parser Features (Completed)
 
----
+Phase 1 (done):
 
-## 8.2.1 Drop-In Replacement (Immediate Support)
+Normalizes CR, CRLF, LF
 
-Users may replace these PNGs with their own custom-designed character sets.
+Removes blank lines
 
-**Requirements:**
+Detects valid loader lines
 
-- Same pixel dimensions  
-- Same 16×16 tile layout  
-- Same ordering of glyphs  
+Passes them to Phase 2
 
-PCjs will automatically use the new sets with no code changes.
+Phase 2 (done):
 
-This enables highly accurate visual reproduction of modified or upgraded C1P hardware.
+Splits address from byte section
 
----
+Validates hex formatting
 
-## 8.2.2 Planned: Runtime Character Set Selector
+Converts hex into byte arrays
 
-A future UI feature will allow toggling between character sets *during runtime*:
+Produces list of loader blocks:
 
-```
-Character Set:
-   • OSI Original
-   • John’s Custom Set A
-   • John’s Custom Set B
-   • Experimental Set
-```
+[
+  {
+    "address": 512,
+    "bytes": [0xA9, 0x41, 0x8D, 0x00, 0xE0]
+  },
+  ...
+]
 
-Needs:
+✔ RAM Write Test (Confirmed Working)
 
-- JS extension  
-- Re-binding of chargen texture  
-- Forced redraw of VRAM  
+We verified:
 
-This allows rapid testing of multiple visualization styles.
+ram.abMem[address] = value;
 
----
 
-# 8.3 Page Layout & Navigation Extensions
+correctly updates RAM and the Video RAM region $D000–$D3FF.
 
-The standard PCjs site layout includes a large left-hand sidebar with extensive navigation.  
-For a streamlined development-focused workflow, the C1P emulator pages will be customized.
+HI printed correctly at top-left:
 
----
+ram.abMem[0xD000] = 0x48; // H
+ram.abMem[0xD001] = 0x49; // I
 
-## 8.3.1 Sidebar Removal (Custom Layout)
+8.1.2 Load-to-RAM Button (Planned: Next Step)
 
-A new layout file (e.g., `c1p-custom.html`) will:
+The loader will receive a Load to RAM button, which will:
 
-- Remove the entire left-hand navigation menu  
-- Preserve existing page headings  
-- Display the emulator as the main content focus  
+Parse .lod blocks
 
-This creates an application-like standalone emulator interface.
+Use ram.abMem[...] = ... to write bytes directly
 
----
+Display success/errors to the user
 
-## 8.3.2 Relocated Useful Menu Items
+Future enhancement:
 
-Selected navigation items will be preserved and moved **below the emulator**:
+Auto-run if .XXXXG block was present
 
-### Hardware
-- OSI → Challenger 1P  
-- OSI → Challenger 1P with Debugger  
+This will replicate OSI monitor loading without typing anything.
 
-### Software
-- OSI C1P → 6502 Programs  
-- OSI C1P → BASIC Programs  
-- OSI C1P → John’s 6502 Programs *(new category)*  
+8.1.3 URL Loader (Planned)
 
-This creates a compact, relevant navigation area while removing clutter.
+Programs can also be auto-loaded via URL parameters:
 
----
+?lod=/assets/demo/pong.lod&autoStart=1
 
-# 8.4 VRAM Dump & Screenshot Tools (Planned)
 
-## 8.4.1 VRAM Dump
-- Dumps $D000–$D3FF as  
-  - Hex  
-  - Character grid  
-  - Markdown or text  
-- Useful for debugging graphics and text programs.
+Implementation plan:
 
-## 8.4.2 Screenshot Tool
-- Captures the video canvas  
-- Exports as PNG or Base64  
-- Enables ChatGPT-assisted debugging using screenshots  
+Fetch .lod text via fetch()
 
----
+Reuse same parser
 
-# 8.5 Memory Tools (Planned)
+Load into RAM
 
-Future planned features include:
+Auto-run if requested
 
-- Memory region inspector to view bytes interactively  
-- Direct byte injection for patching programs in RAM  
-- Zero-page and stack visualization  
-- Breakpoint manager (depending on emulator complexity)  
+8.2 Character Generator (chargen) Extensions
+8.2.1 Drop-in Replacement Support (Already Works)
 
----
+Users can replace:
 
-# 8.6 API Extensions (Planned)
+chargen4x.png
+chargen2x.png
+chargen1x.png
 
-Helper APIs will be exposed for developer use:
 
-```javascript
-machine.loadLOD(text);
-machine.dumpVRAM();
-machine.screenshot();
-machine.loadBytes(address, bytes);
-machine.runAt(address);
-```
+with identical-sized PNGs to change the video font.
 
-These will support:
+8.2.2 Runtime Selector (Planned)
 
-- Automation  
-- Batch testing  
-- Integration with ChatGPT-guided workflows  
+Will allow switching chargen files at runtime.
+Requires:
 
----
+Rebasing video texture
 
-This section will expand as new extensions and tools are implemented.
+Forcing a redraw
+
+UI selector
+
+8.3 Page Layout & Navigation Extensions (Planned)
+
+A simplified layout will:
+
+Remove large left-hand navigation
+
+Keep only relevant OSI links in a new “utility menu”
+
+Focus the page around the emulator
+
+Not yet implemented.
+
+8.4 VRAM Tools (Planned)
+
+Tools to dump VRAM:
+
+Hex dump
+
+Character-grid dump
+
+Markdown/text export
+
+This will be invaluable for debugging video programs.
+
+8.5 Screenshot Tool (Planned)
+
+Will capture the video canvas and export PNG or Base64.
+
+8.6 Memory & API Tools (Planned)
+
+Proposed helper APIs:
+
+machine.loadLOD(text)
+machine.loadBytes(addr, array)
+machine.dumpVRAM()
+machine.screenshot()
+machine.runAt(addr)
+
+
+These will enable automated tooling and ChatGPT-assisted workflows.
