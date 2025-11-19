@@ -1,32 +1,21 @@
-console.log("[LOD] UI + Loader extension script running (Serial/Tape Mode)");
+console.log("[LOD] UI + Loader extension script running (Machine Mount Mode)");
 
 (function() {
 
-    // ---------------------------------------------------------------
-    // Wait for emulator DOM
-    // ---------------------------------------------------------------
     function initWhenReady() {
-        // We look for the PCjs global object to be sure the runtime is up
         if (typeof PCjs === "undefined" || !PCjs.machines) {
-            console.log("[LOD] PCjs runtime not ready — retrying...");
             return void setTimeout(initWhenReady, 100);
         }
 
         const machineEl = document.querySelector(".pcjs-machine");
-        if (!machineEl) {
-            return void setTimeout(initWhenReady, 100);
-        }
+        if (!machineEl) return void setTimeout(initWhenReady, 100);
 
-        // Prevent double insertion
         if (document.getElementById("lod-loader-box")) return;
 
-        console.log("[LOD] PCjs and Machine found. Initializing Serial Loader.");
+        console.log("[LOD] PCjs Ready. Initializing Tape Loader.");
         buildUI(machineEl);
     }
 
-    // ---------------------------------------------------------------
-    // Build the UI
-    // ---------------------------------------------------------------
     function buildUI(machineEl) {
         const box = document.createElement("div");
         box.id = "lod-loader-box";
@@ -37,7 +26,7 @@ console.log("[LOD] UI + Loader extension script running (Serial/Tape Mode)");
         box.style.fontFamily = "monospace";
 
         const title = document.createElement("div");
-        title.textContent = "Load OSI C1P .LOD (Serial Tape Mode)";
+        title.textContent = "Load OSI C1P .LOD (Tape Emulation)";
         title.style.fontWeight = "bold";
         title.style.marginBottom = "0.75em";
         box.appendChild(title);
@@ -62,7 +51,7 @@ console.log("[LOD] UI + Loader extension script running (Serial/Tape Mode)");
 
         // LOAD BUTTON
         const loadBtn = document.createElement("button");
-        loadBtn.textContent = "LOAD VIA SERIAL TAPE";
+        loadBtn.textContent = "LOAD TAPE";
         loadBtn.style.marginTop = "0.75em";
         loadBtn.style.padding = "0.5em 1em";
         loadBtn.style.fontSize = "1.1em";
@@ -78,23 +67,19 @@ console.log("[LOD] UI + Loader extension script running (Serial/Tape Mode)");
 
         machineEl.parentNode.appendChild(box);
 
-        // -----------------------------------------------------------
         // Event: File Selected
-        // -----------------------------------------------------------
         fileInput.addEventListener("change", ev => {
             const file = ev.target.files?.[0];
             if (!file) return;
             const reader = new FileReader();
             reader.onload = () => {
                 preview.textContent = reader.result;
-                statusDiv.textContent = "File loaded. Ready to send to Serial Port.";
+                statusDiv.textContent = "File loaded. Ready to mount.";
             };
             reader.readAsText(file);
         });
 
-        // -----------------------------------------------------------
-        // Event: LOAD VIA SERIAL
-        // -----------------------------------------------------------
+        // Event: LOAD TAPE
         loadBtn.addEventListener("click", () => {
             const text = preview.textContent;
             if (!text || text.startsWith("(file contents")) {
@@ -102,57 +87,49 @@ console.log("[LOD] UI + Loader extension script running (Serial/Tape Mode)");
                 return;
             }
 
-            // 1. Find the Serial Component
-            // We look for a component that identifies as serial
-            const serial = PCjs.components.find(c => 
-                c.type === "serial" || 
-                (c.id && c.id.includes("serial"))
-            );
-
-            if (!serial) {
-                statusDiv.textContent = "Error: Serial Port component not found.";
+            // 1. Find the Machine Component
+            // The machine handles 'mountSoftware'
+            const machine = PCjs.components.find(c => c.id && c.id.includes(".machine"));
+            if (!machine) {
+                statusDiv.textContent = "Error: Machine component not found.";
                 return;
             }
 
-            // 2. Prepare the Data
-            // Convert text to an array of ASCII byte values.
-            // OSI requires CR (0x0D) as line terminators.
-            // We replace LF with CR, or CRLF with CR.
+            // 2. Convert Text to Bytes (CR delimited)
             const cleanText = text.replace(/\r\n/g, "\r").replace(/\n/g, "\r");
-            
             const byteArray = [];
             for (let i = 0; i < cleanText.length; i++) {
                 byteArray.push(cleanText.charCodeAt(i));
             }
 
-            console.log(`[LOD] Converted ${byteArray.length} bytes for serial transmission.`);
-
-            // 3. Create Fake JSON Blob
-            // Structure: { "bytes": [ ... ] }
+            // 3. Create JSON Blob
             const jsonPayload = JSON.stringify({ bytes: byteArray });
             const blob = new Blob([jsonPayload], { type: "application/json" });
             const blobURL = URL.createObjectURL(blob);
 
-            // 4. Load into Serial Port
-            statusDiv.textContent = "Mounting tape...";
-            
+            statusDiv.textContent = "Mounting tape via Machine API...";
+            console.log("[LOD] Calling machine.mountSoftware with Blob URL");
+
             try {
-                // PCjs serial components usually have a load(name, path) method
-                // The 'name' is arbitrary, 'path' is our Blob URL.
-                if (typeof serial.load === "function") {
-                    const result = serial.load("TapeLoader.json", blobURL);
+                // 4. Call the API that ?autoMount uses
+                if (typeof machine.mountSoftware === "function") {
                     
-                    // If load returns true or undefined (async), assume success
-                    console.log("[LOD] serial.load() called", result);
-                    statusDiv.innerHTML = "<b>Tape Mounted!</b><br>If the emulator is in Monitor mode, typing should start immediately.<br>If not, Reset the machine and enter Monitor (M).";
-                    
+                    machine.mountSoftware({
+                        name: "UserTape.json",
+                        path: blobURL
+                    });
+
+                    statusDiv.innerHTML = "<b>Tape Mounted!</b><br>1. Ensure Emulator is in Monitor Mode (Press Break, then M).<br>2. Execution should start automatically.";
+                
                 } else {
-                    statusDiv.textContent = "Error: Serial component found but has no load() method.";
-                    console.error(serial);
+                    // Fallback: try to find it on the prototype or log the machine
+                    statusDiv.textContent = "Error: machine.mountSoftware() is not a function.";
+                    console.error("Machine object:", machine);
+                    console.log("Machine keys:", Object.keys(machine));
                 }
             } catch (err) {
                 console.error(err);
-                statusDiv.textContent = "Exception during load: " + err.message;
+                statusDiv.textContent = "Exception: " + err.message;
             }
         });
     }
