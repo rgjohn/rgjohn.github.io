@@ -1,112 +1,33 @@
-console.log("[LOD] UI + Loader extension script running");
+console.log("[LOD] UI + Loader extension script running (Serial/Tape Mode)");
 
 (function() {
-
-    // ---------------------------------------------------------------
-    // LOD PARSER — Extract blocks { addr, bytes[] }
-    // ---------------------------------------------------------------
-    function parseLOD(text) {
-        if (!text || typeof text !== "string") return [];
-
-        // Normalize all line endings → LF
-        text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-        const lines = text.split("\n");
-
-        const blocks = [];
-        let currentAddr = null;
-        let currentBytes = [];
-
-        function finishBlock() {
-            if (currentAddr !== null && currentBytes.length > 0) {
-                blocks.push({ addr: currentAddr, bytes: currentBytes.slice() });
-            }
-            currentAddr = null;
-            currentBytes = [];
-        }
-
-        for (let raw of lines) {
-            let line = (raw || "").trim();
-            if (!line) continue;
-
-            // End marker like ".0222G"
-            if (/^\.[0-9A-Fa-f]+G$/i.test(line)) {
-                finishBlock();
-                continue;
-            }
-
-            // Start of block: ".0222/" or ".0222/A9 41 ..."
-            if (/^\.[0-9A-Fa-f]+\/?/i.test(line)) {
-                finishBlock();
-
-                const addrMatch = line.match(/^\.(\w+)/);
-                if (!addrMatch) continue;
-
-                currentAddr = parseInt(addrMatch[1], 16);
-                if (isNaN(currentAddr)) {
-                    currentAddr = null;
-                    currentBytes = [];
-                    continue;
-                }
-
-                let slashPos = line.indexOf("/");
-                let payload = slashPos >= 0 ? line.substring(slashPos + 1).trim() : "";
-
-                // If line ends with G, remove it
-                let hasG = false;
-                if (/G$/i.test(payload)) {
-                    hasG = true;
-                    payload = payload.slice(0, -1).trim();
-                }
-
-                // Extract hex byte tokens
-                if (payload.length > 0) {
-                    payload.split(/[\s,]+/).forEach(tok => {
-                        if (/^[0-9A-Fa-f]{2}$/.test(tok))
-                            currentBytes.push(parseInt(tok, 16));
-                    });
-                }
-
-                if (hasG) finishBlock();
-                continue;
-            }
-
-            // Plain data line: bytes only
-            line.split(/[\s,]+/).forEach(tok => {
-                if (/^[0-9A-Fa-f]{2}$/.test(tok))
-                    currentBytes.push(parseInt(tok, 16));
-            });
-        }
-
-        finishBlock();
-        return blocks;
-    }
 
     // ---------------------------------------------------------------
     // Wait for emulator DOM
     // ---------------------------------------------------------------
     function initWhenReady() {
-        const machineEl = document.querySelector(".pcjs-machine");
-        if (!machineEl) {
-            console.log("[LOD] No .pcjs-machine yet — retrying...");
+        // We look for the PCjs global object to be sure the runtime is up
+        if (typeof PCjs === "undefined" || !PCjs.machines) {
+            console.log("[LOD] PCjs runtime not ready — retrying...");
             return void setTimeout(initWhenReady, 100);
         }
 
-        console.log("[LOD] Machine element found:", machineEl);
-
-        // Prevent double insertion
-        if (document.getElementById("lod-loader-box")) {
-            console.log("[LOD] Loader already exists — skipping");
-            return;
+        const machineEl = document.querySelector(".pcjs-machine");
+        if (!machineEl) {
+            return void setTimeout(initWhenReady, 100);
         }
 
-        // Extract machine ID (e.g., "c1p8k-debugger.machine")
-        const machineID = machineEl.id || "";
-        const cleanMachineID = machineID.replace(".machine", "");
-        console.log("[LOD] Machine ID:", cleanMachineID);
+        // Prevent double insertion
+        if (document.getElementById("lod-loader-box")) return;
 
-        // -----------------------------------------------------------
-        // BUILD UI PANEL
-        // -----------------------------------------------------------
+        console.log("[LOD] PCjs and Machine found. Initializing Serial Loader.");
+        buildUI(machineEl);
+    }
+
+    // ---------------------------------------------------------------
+    // Build the UI
+    // ---------------------------------------------------------------
+    function buildUI(machineEl) {
         const box = document.createElement("div");
         box.id = "lod-loader-box";
         box.style.border = "2px solid #888";
@@ -116,17 +37,19 @@ console.log("[LOD] UI + Loader extension script running");
         box.style.fontFamily = "monospace";
 
         const title = document.createElement("div");
-        title.textContent = "Load OSI C1P .LOD Program";
+        title.textContent = "Load OSI C1P .LOD (Serial Tape Mode)";
         title.style.fontWeight = "bold";
         title.style.marginBottom = "0.75em";
         box.appendChild(title);
 
+        // File Input
         const fileInput = document.createElement("input");
         fileInput.type = "file";
         fileInput.accept = ".lod,.txt";
         fileInput.style.marginBottom = "0.75em";
         box.appendChild(fileInput);
 
+        // Preview
         const preview = document.createElement("pre");
         preview.textContent = "(file contents will appear here)";
         preview.style.whiteSpace = "pre-wrap";
@@ -137,34 +60,26 @@ console.log("[LOD] UI + Loader extension script running");
         preview.style.overflowY = "auto";
         box.appendChild(preview);
 
-        // LOAD TO RAM
+        // LOAD BUTTON
         const loadBtn = document.createElement("button");
-        loadBtn.textContent = "LOAD TO RAM";
+        loadBtn.textContent = "LOAD VIA SERIAL TAPE";
         loadBtn.style.marginTop = "0.75em";
-        loadBtn.style.padding = "0.25em 1em";
-        loadBtn.style.fontFamily = "monospace";
+        loadBtn.style.padding = "0.5em 1em";
+        loadBtn.style.fontSize = "1.1em";
+        loadBtn.style.fontWeight = "bold";
         loadBtn.style.cursor = "pointer";
         box.appendChild(loadBtn);
 
-        // SCREEN TEST
-        const screenBtn = document.createElement("button");
-        screenBtn.textContent = "SCREEN TEST";
-        screenBtn.style.marginLeft = "0.75em";
-        screenBtn.style.padding = "0.25em 1em";
-        box.appendChild(screenBtn);
-
-        // PARSE LOD
-        const parseBtn = document.createElement("button");
-        parseBtn.textContent = "PARSE LOD";
-        parseBtn.style.marginLeft = "0.75em";
-        parseBtn.style.padding = "0.25em 1em";
-        box.appendChild(parseBtn);
+        // STATUS AREA
+        const statusDiv = document.createElement("div");
+        statusDiv.style.marginTop = "1em";
+        statusDiv.style.color = "#333";
+        box.appendChild(statusDiv);
 
         machineEl.parentNode.appendChild(box);
-        console.log("[LOD] Loader UI successfully inserted");
 
         // -----------------------------------------------------------
-        // FILE LOAD
+        // Event: File Selected
         // -----------------------------------------------------------
         fileInput.addEventListener("change", ev => {
             const file = ev.target.files?.[0];
@@ -172,123 +87,74 @@ console.log("[LOD] UI + Loader extension script running");
             const reader = new FileReader();
             reader.onload = () => {
                 preview.textContent = reader.result;
-                console.log("[LOD] File loaded, preview updated");
+                statusDiv.textContent = "File loaded. Ready to send to Serial Port.";
             };
             reader.readAsText(file);
         });
 
         // -----------------------------------------------------------
-        // SCREEN TEST — write HELLO to VRAM
-        // -----------------------------------------------------------
-        screenBtn.addEventListener("click", () => {
-            let ram = PCjs.components.find(c => c.id.endsWith(".ram8K"));
-            if (!ram) return alert("RAM not found");
-
-            const VIDEO = 0xD000;
-            const COLS = 32;
-
-            "HELLO".split("").forEach((ch, i) => {
-                ram.abMem[VIDEO + i] = ch.charCodeAt(0);
-            });
-
-            console.log("[LOD] HELLO written to VRAM");
-        });
-
-        // -----------------------------------------------------------
-        // PARSE LOD — preview parser output
-        // -----------------------------------------------------------
-        parseBtn.addEventListener("click", () => {
-            const text = preview.textContent || "";
-            const blocks = parseLOD(text);
-
-            if (!blocks.length) {
-                preview.textContent = "[PARSER] No valid LOD blocks.\n\n" + text;
-                return;
-            }
-
-            let out = "[PARSER] " + blocks.length + " block(s) found:\n\n";
-            blocks.forEach((b, i) => {
-                const a = b.addr.toString(16).toUpperCase().padStart(4, "0");
-                const sample = b.bytes.slice(0, 16)
-                    .map(b => b.toString(16).toUpperCase().padStart(2, "0"))
-                    .join(" ");
-                out += `Block ${i+1} @ $${a}, ${b.bytes.length} bytes\n  ${sample}${b.bytes.length>16?" ...":""}\n\n`;
-            });
-
-            preview.textContent = out;
-        });
-
-        // -----------------------------------------------------------
-        // LOAD TO RAM + AUTO-RUN (debugger only)
+        // Event: LOAD VIA SERIAL
         // -----------------------------------------------------------
         loadBtn.addEventListener("click", () => {
-            const text = preview.textContent.trim();
-            if (!text) return alert("No LOD text loaded.");
-
-            const blocks = parseLOD(text);
-            if (!blocks.length) return alert("No valid .LOD blocks found.");
-
-            // Find RAM
-            const ram = PCjs.components.find(c => c.id.endsWith(".ram8K"));
-            if (!ram) return alert("RAM component not found.");
-
-            // Write bytes
-            blocks.forEach(b => {
-                let addr = b.addr;
-                b.bytes.forEach(byte => {
-                    ram.abMem[addr++] = byte;
-                });
-            });
-
-            console.log("[LOD] RAM write complete.");
-
-            // FIND ANY ".XXXXG"
-            const gMatch = text.match(/\.(\w+)G/i);
-            let execAddr = gMatch ? parseInt(gMatch[1], 16) : null;
-
-            if (execAddr == null) {
-                // On non-debugger pages, or if no G address is found, just stop here.
-                alert("Load complete (no auto-run execution address found).");
+            const text = preview.textContent;
+            if (!text || text.startsWith("(file contents")) {
+                alert("Please select a file first.");
                 return;
             }
 
-            const hexAddr = execAddr.toString(16).toUpperCase().padStart(4, "0");
-            console.log("[LOD] Execution address found: $" + hexAddr);
+            // 1. Find the Serial Component
+            // We look for a component that identifies as serial
+            const serial = PCjs.components.find(c => 
+                c.type === "serial" || 
+                (c.id && c.id.includes("serial"))
+            );
 
-            // -------------------------------------------------------
-            // Attempt Auto-Run (Debugger only)
-            // -------------------------------------------------------
-            // We specifically look for the debugger input box and Enter button
-            // using robust attribute selectors based on the user's DOM snippet.
-            const debugInput = document.querySelector("input[id$='debugInput']");
-            const debugEnter = document.querySelector("div[id$='debugEnter'] button");
-
-            if (!debugInput || !debugEnter) {
-                // Standard page (no debugger) - just alert success
-                alert("Load complete.");
+            if (!serial) {
+                statusDiv.textContent = "Error: Serial Port component not found.";
                 return;
             }
 
-            // Helper to send a command to the PCjs debugger
-            function sendCmd(cmdStr) {
-                debugInput.value = cmdStr;
-                debugInput.dispatchEvent(new Event("input", { bubbles: true }));
-                debugEnter.click();
+            // 2. Prepare the Data
+            // Convert text to an array of ASCII byte values.
+            // OSI requires CR (0x0D) as line terminators.
+            // We replace LF with CR, or CRLF with CR.
+            const cleanText = text.replace(/\r\n/g, "\r").replace(/\n/g, "\r");
+            
+            const byteArray = [];
+            for (let i = 0; i < cleanText.length; i++) {
+                byteArray.push(cleanText.charCodeAt(i));
             }
 
-            // Execute sequence: Halt -> Set PC -> Go
-            // 1. Halt (to break out of ROM loops)
-            sendCmd("h");
+            console.log(`[LOD] Converted ${byteArray.length} bytes for serial transmission.`);
 
-            // 2. Set PC to the start address (force register update)
-            sendCmd("r pc " + hexAddr);
+            // 3. Create Fake JSON Blob
+            // Structure: { "bytes": [ ... ] }
+            const jsonPayload = JSON.stringify({ bytes: byteArray });
+            const blob = new Blob([jsonPayload], { type: "application/json" });
+            const blobURL = URL.createObjectURL(blob);
 
-            // 3. Go (resume execution)
-            sendCmd("g");
-
-            console.log(`[LOD] Auto-run sequence sent: h -> r pc ${hexAddr} -> g`);
+            // 4. Load into Serial Port
+            statusDiv.textContent = "Mounting tape...";
+            
+            try {
+                // PCjs serial components usually have a load(name, path) method
+                // The 'name' is arbitrary, 'path' is our Blob URL.
+                if (typeof serial.load === "function") {
+                    const result = serial.load("TapeLoader.json", blobURL);
+                    
+                    // If load returns true or undefined (async), assume success
+                    console.log("[LOD] serial.load() called", result);
+                    statusDiv.innerHTML = "<b>Tape Mounted!</b><br>If the emulator is in Monitor mode, typing should start immediately.<br>If not, Reset the machine and enter Monitor (M).";
+                    
+                } else {
+                    statusDiv.textContent = "Error: Serial component found but has no load() method.";
+                    console.error(serial);
+                }
+            } catch (err) {
+                console.error(err);
+                statusDiv.textContent = "Exception during load: " + err.message;
+            }
         });
-
     }
 
     initWhenReady();
