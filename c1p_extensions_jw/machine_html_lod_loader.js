@@ -240,38 +240,53 @@ console.log("[LOD] UI + Loader extension script running");
                 });
             });
 
-            console.log("[LOD] Load complete.");
+            console.log("[LOD] RAM write complete.");
 
             // FIND ANY ".XXXXG"
             const gMatch = text.match(/\.(\w+)G/i);
             let execAddr = gMatch ? parseInt(gMatch[1], 16) : null;
 
             if (execAddr == null) {
-                alert("Load complete (no auto-run).");
+                // On non-debugger pages, or if no G address is found, just stop here.
+                alert("Load complete (no auto-run execution address found).");
                 return;
             }
 
-            console.log("[LOD] Auto-run entry $" + execAddr.toString(16));
+            const hexAddr = execAddr.toString(16).toUpperCase().padStart(4, "0");
+            console.log("[LOD] Execution address found: $" + hexAddr);
 
             // -------------------------------------------------------
-            // Only auto-run if a debugger exists
+            // Attempt Auto-Run (Debugger only)
             // -------------------------------------------------------
-            const debugInput = document.querySelector("input.c1p-binding");
-            if (!debugInput) {
-                alert("Load complete, but auto-run unavailable (no debugger).");
+            // We specifically look for the debugger input box and Enter button
+            // using robust attribute selectors based on the user's DOM snippet.
+            const debugInput = document.querySelector("input[id$='debugInput']");
+            const debugEnter = document.querySelector("div[id$='debugEnter'] button");
+
+            if (!debugInput || !debugEnter) {
+                // Standard page (no debugger) - just alert success
+                alert("Load complete.");
                 return;
             }
 
-            // Send "g 0222"
-            const cmd = "g " + execAddr.toString(16).padStart(4,"0");
+            // Helper to send a command to the PCjs debugger
+            function sendCmd(cmdStr) {
+                debugInput.value = cmdStr;
+                debugInput.dispatchEvent(new Event("input", { bubbles: true }));
+                debugEnter.click();
+            }
 
-            debugInput.value = cmd;
-            debugInput.dispatchEvent(new Event("input", { bubbles: true }));
+            // Execute sequence: Halt -> Set PC -> Go
+            // 1. Halt (to break out of ROM loops)
+            sendCmd("h");
 
-            const enterBtn = document.querySelector("button.pcjs-button[value='Enter'], button.pcjs-button");
-            if (enterBtn) enterBtn.click();
+            // 2. Set PC to the start address (force register update)
+            sendCmd("r pc " + hexAddr);
 
-            alert(`Load complete. Auto-running from $${execAddr.toString(16).toUpperCase()}.`);
+            // 3. Go (resume execution)
+            sendCmd("g");
+
+            console.log(`[LOD] Auto-run sequence sent: h -> r pc ${hexAddr} -> g`);
         });
 
     }
