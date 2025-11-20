@@ -1,42 +1,68 @@
-console.log("[LOD] UI + Loader extension script running (Dropdown Injection Mode)");
+console.log("[LOD] UI + Loader extension script running (Final V1)");
 
 (function() {
 
     function initWhenReady() {
-        // We need the DOM to be fully parsed and the Serial List to exist
+        // Check for PCjs global
+        if (typeof PCjs === "undefined" || !PCjs.machines) {
+            return void setTimeout(initWhenReady, 100);
+        }
+
+        // 1. URL AUTO-START CHECK
+        // If the URL has ?autoStart=true and the debugger is halted, click Run.
+        checkAutoStart();
+
+        // 2. UI INITIALIZATION
         const serialList = document.getElementById("c1p8k-debugger.listSerial");
         const serialLoadBtn = document.getElementById("c1p8k-debugger.loadSerial");
 
         if (!serialList || !serialLoadBtn) {
-            console.log("[LOD] Serial controls not found yet... retrying.");
             return void setTimeout(initWhenReady, 200);
         }
 
-        // Prevent double insertion
         if (document.getElementById("lod-loader-box")) return;
 
-        console.log("[LOD] Serial controls found. Initializing UI.");
+        console.log("[LOD] System ready. Building UI.");
         buildUI(serialList, serialLoadBtn);
     }
 
+    // ---------------------------------------------------------------
+    // Auto-Start Logic for URLs
+    // ---------------------------------------------------------------
+    function checkAutoStart() {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("autoStart") === "true") {
+            // Find the Run button in the debugger panel
+            // It is usually inside a control div, e.g., id="c1p8k-debugger.run"
+            const runControl = document.querySelector("div[id$='.run'] button, button[title='Run']");
+            
+            // Check if the CPU is halted (speed text often says "Stopped")
+            const statusDiv = document.querySelector(".pcjs-status");
+            const isStopped = statusDiv ? statusDiv.textContent.includes("Stopped") : true;
+
+            if (runControl && isStopped) {
+                console.log("[LOD] AutoStart detected. Clicking Run...");
+                setTimeout(() => runControl.click(), 500); // Small delay to ensure load finishes
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Interactive UI Builder
+    // ---------------------------------------------------------------
     function buildUI(serialListDiv, serialLoadBtnDiv) {
-        // Find the actual <select> and <button> elements inside the wrappers
         const selectEl = serialListDiv.querySelector("select");
         const buttonEl = serialLoadBtnDiv.querySelector("button");
-
-        if (!selectEl || !buttonEl) {
-            console.error("[LOD] Could not find <select> or <button> inside serial controls.");
-            return;
-        }
-
-        // Create the Custom Panel
         const machineEl = document.querySelector(".pcjs-machine");
+
+        if (!selectEl || !buttonEl || !machineEl) return;
+
         const box = document.createElement("div");
         box.id = "lod-loader-box";
         box.style.border = "2px solid #888";
         box.style.padding = "1em";
         box.style.marginTop = "1.5em";
-        box.style.background = "#e6f2ff"; // Light blue to distinguish new version
+        box.style.background = "#e6f2ff"; 
         box.style.fontFamily = "monospace";
 
         const title = document.createElement("div");
@@ -81,19 +107,17 @@ console.log("[LOD] UI + Loader extension script running (Dropdown Injection Mode
 
         machineEl.parentNode.appendChild(box);
 
-        // Event: File Selected
         fileInput.addEventListener("change", ev => {
             const file = ev.target.files?.[0];
             if (!file) return;
             const reader = new FileReader();
             reader.onload = () => {
                 preview.textContent = reader.result;
-                statusDiv.textContent = "File loaded. Ready to inject.";
+                statusDiv.textContent = "File loaded.";
             };
             reader.readAsText(file);
         });
 
-        // Event: INJECT AND LOAD
         loadBtn.addEventListener("click", () => {
             const text = preview.textContent;
             if (!text || text.startsWith("(file contents")) {
@@ -101,38 +125,34 @@ console.log("[LOD] UI + Loader extension script running (Dropdown Injection Mode
                 return;
             }
 
-            statusDiv.textContent = "Preparing injection...";
+            // Attempt to click BREAK to help the user
+            const breakBtn = document.querySelector("div[id$='.break'] button");
+            if (breakBtn) {
+                console.log("[LOD] Clicking Break button...");
+                breakBtn.click();
+            }
 
-            // 1. Prepare the Text (Ensure CR line endings)
-            const cleanText = text.replace(/\r\n/g, "\r").replace(/\n/g, "\r");
-            
-            // 2. Create a Blob URL
-            // Note: using .65v extension in the blob type hint just in case, though URL matters most
-            const blob = new Blob([cleanText], { type: "text/plain" });
-            const blobURL = URL.createObjectURL(blob);
+            statusDiv.innerHTML = "<b>Step 1:</b> Break sent.<br><b>Step 2:</b> <span style='color:red;font-weight:bold;'>PRESS 'M' NOW!</span><br>(Injecting tape in 2 seconds...)";
 
-            // 3. Inject into the <select> list
-            // We create a new option at the top of the list
-            const optionName = "** CUSTOM LOD LOAD **";
-            const newOption = new Option(optionName, blobURL);
-            
-            // Add it to the beginning of the select
-            selectEl.add(newOption, 0);
-            
-            // 4. Select it
-            selectEl.selectedIndex = 0;
-            selectEl.value = blobURL;
-
-            // 5. Trigger 'change' event so PCjs sees the new value
-            selectEl.dispatchEvent(new Event("change", { bubbles: true }));
-
-            statusDiv.innerHTML = "<b>Injected!</b> Clicking Load button...";
-
-            // 6. Click the existing PCjs 'Load' button
+            // Delay injection to give user time to hit 'M'
             setTimeout(() => {
+                const cleanText = text.replace(/\r\n/g, "\r").replace(/\n/g, "\r");
+                const blob = new Blob([cleanText], { type: "text/plain" });
+                const blobURL = URL.createObjectURL(blob);
+
+                const optionName = "** CUSTOM LOD LOAD **";
+                const newOption = new Option(optionName, blobURL);
+                
+                selectEl.add(newOption, 0);
+                selectEl.selectedIndex = 0;
+                selectEl.value = blobURL;
+                selectEl.dispatchEvent(new Event("change", { bubbles: true }));
+
+                // Click the PCjs Load button
                 buttonEl.click();
-                statusDiv.innerHTML = "<b>Load Triggered!</b><br>Ensure you are in Monitor Mode (Break -> M).";
-            }, 200);
+                
+                statusDiv.innerHTML = "<b>Tape Running!</b><br>If you pressed M, you should see ghost typing.";
+            }, 2000);
         });
     }
 
