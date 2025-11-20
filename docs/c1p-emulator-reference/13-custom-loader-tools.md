@@ -40,3 +40,15 @@ Allows remote execution of programs via URL parameters, enabling automated batch
 *   **File:** `c1p_extensions_jw/machine_html_lod_loader.js`
 *   **Hook:** Included via `<script>` in `_includes/machine.html`.
 *   **Dependencies:** Requires the `c1p8k-debugger.listSerial` and `c1p8k-debugger.loadSerial` DOM elements to be present.
+
+## Programming Notes & Memory Usage
+
+### Zero Page Safety
+Based on successful execution of complex programs (e.g., `LIFE.65v`), the following Zero Page locations appear safe for user machine code, even when loading via the Monitor:
+*   **$FE - $FF**: Commonly used as 16-bit pointers for indirect addressing (e.g., `STA ($FE), Y`).
+*   **$00 - $10**: Often used by user programs (though Microsoft BASIC uses this region heavily, it is generally safe for pure machine code running from Monitor).
+
+### Loading Addresses
+*   **$0200 - $027F**: This region is the **Monitor Input Buffer**.
+    *   *Caution:* While loading large blocks into this region (e.g., starting at `$0222`) has been observed to work in some `.LOD` files, it carries a risk of buffer collision if the load command line is extremely long.
+    *   *Recommendation:* For manual or experimental code, prefer loading at **$0300** or above to guarantee no overlap with the input buffer during the load process.
