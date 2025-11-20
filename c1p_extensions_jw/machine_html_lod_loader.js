@@ -1,8 +1,9 @@
-console.log("[LOD] UI + Loader extension script running (Machine Mount Mode)");
+console.log("[LOD] UI + Loader extension script running (Native .LOD Mode)");
 
 (function() {
 
     function initWhenReady() {
+        // Wait for PCjs global and machine
         if (typeof PCjs === "undefined" || !PCjs.machines) {
             return void setTimeout(initWhenReady, 100);
         }
@@ -10,9 +11,10 @@ console.log("[LOD] UI + Loader extension script running (Machine Mount Mode)");
         const machineEl = document.querySelector(".pcjs-machine");
         if (!machineEl) return void setTimeout(initWhenReady, 100);
 
+        // Prevent double insertion
         if (document.getElementById("lod-loader-box")) return;
 
-        console.log("[LOD] PCjs Ready. Initializing Tape Loader.");
+        console.log("[LOD] PCjs Ready. Initializing Native LOD Loader.");
         buildUI(machineEl);
     }
 
@@ -26,7 +28,7 @@ console.log("[LOD] UI + Loader extension script running (Machine Mount Mode)");
         box.style.fontFamily = "monospace";
 
         const title = document.createElement("div");
-        title.textContent = "Load OSI C1P .LOD (Tape Emulation)";
+        title.textContent = "Load OSI C1P .LOD (Native Serial)";
         title.style.fontWeight = "bold";
         title.style.marginBottom = "0.75em";
         box.appendChild(title);
@@ -34,7 +36,7 @@ console.log("[LOD] UI + Loader extension script running (Machine Mount Mode)");
         // File Input
         const fileInput = document.createElement("input");
         fileInput.type = "file";
-        fileInput.accept = ".lod,.txt";
+        fileInput.accept = ".lod,.txt,.65v";
         fileInput.style.marginBottom = "0.75em";
         box.appendChild(fileInput);
 
@@ -51,7 +53,7 @@ console.log("[LOD] UI + Loader extension script running (Machine Mount Mode)");
 
         // LOAD BUTTON
         const loadBtn = document.createElement("button");
-        loadBtn.textContent = "LOAD TAPE";
+        loadBtn.textContent = "LOAD .LOD VIA TAPE";
         loadBtn.style.marginTop = "0.75em";
         loadBtn.style.padding = "0.5em 1em";
         loadBtn.style.fontSize = "1.1em";
@@ -79,53 +81,45 @@ console.log("[LOD] UI + Loader extension script running (Machine Mount Mode)");
             reader.readAsText(file);
         });
 
-        // Event: LOAD TAPE
+        // Event: LOAD BUTTON
         loadBtn.addEventListener("click", () => {
             const text = preview.textContent;
             if (!text || text.startsWith("(file contents")) {
-                alert("Please select a file first.");
+                alert("Please select a file first (or paste code into the preview).");
                 return;
             }
 
             // 1. Find the Machine Component
-            // The machine handles 'mountSoftware'
             const machine = PCjs.components.find(c => c.id && c.id.includes(".machine"));
             if (!machine) {
                 statusDiv.textContent = "Error: Machine component not found.";
                 return;
             }
 
-            // 2. Convert Text to Bytes (CR delimited)
+            // 2. Prepare Raw Text Blob
+            // We do NOT wrap in JSON. We pass the raw LOD text.
+            // We ensure lines end with CR for OSI compatibility.
             const cleanText = text.replace(/\r\n/g, "\r").replace(/\n/g, "\r");
-            const byteArray = [];
-            for (let i = 0; i < cleanText.length; i++) {
-                byteArray.push(cleanText.charCodeAt(i));
-            }
-
-            // 3. Create JSON Blob
-            const jsonPayload = JSON.stringify({ bytes: byteArray });
-            const blob = new Blob([jsonPayload], { type: "application/json" });
+            
+            const blob = new Blob([cleanText], { type: "text/plain" });
             const blobURL = URL.createObjectURL(blob);
 
-            statusDiv.textContent = "Mounting tape via Machine API...";
-            console.log("[LOD] Calling machine.mountSoftware with Blob URL");
+            statusDiv.textContent = "Mounting tape...";
+            console.log("[LOD] Calling machine.mountSoftware with .lod filename");
 
             try {
-                // 4. Call the API that ?autoMount uses
                 if (typeof machine.mountSoftware === "function") {
                     
+                    // KEY FIX: Filename must end in .lod (or .65v) to trigger native serial loader
                     machine.mountSoftware({
-                        name: "UserTape.json",
+                        name: "program.lod", 
                         path: blobURL
                     });
 
-                    statusDiv.innerHTML = "<b>Tape Mounted!</b><br>1. Ensure Emulator is in Monitor Mode (Press Break, then M).<br>2. Execution should start automatically.";
+                    statusDiv.innerHTML = "<b>Tape Mounted!</b><br>1. Ensure Emulator is in Monitor Mode (Break -> M).<br>2. The system should auto-type and run.";
                 
                 } else {
-                    // Fallback: try to find it on the prototype or log the machine
-                    statusDiv.textContent = "Error: machine.mountSoftware() is not a function.";
-                    console.error("Machine object:", machine);
-                    console.log("Machine keys:", Object.keys(machine));
+                    statusDiv.textContent = "Error: machine.mountSoftware() is not available.";
                 }
             } catch (err) {
                 console.error(err);
