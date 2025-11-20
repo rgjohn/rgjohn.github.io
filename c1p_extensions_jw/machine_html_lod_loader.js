@@ -1,34 +1,46 @@
-console.log("[LOD] UI + Loader extension script running (Native .LOD Mode)");
+console.log("[LOD] UI + Loader extension script running (Dropdown Injection Mode)");
 
 (function() {
 
     function initWhenReady() {
-        // Wait for PCjs global and machine
-        if (typeof PCjs === "undefined" || !PCjs.machines) {
-            return void setTimeout(initWhenReady, 100);
-        }
+        // We need the DOM to be fully parsed and the Serial List to exist
+        const serialList = document.getElementById("c1p8k-debugger.listSerial");
+        const serialLoadBtn = document.getElementById("c1p8k-debugger.loadSerial");
 
-        const machineEl = document.querySelector(".pcjs-machine");
-        if (!machineEl) return void setTimeout(initWhenReady, 100);
+        if (!serialList || !serialLoadBtn) {
+            console.log("[LOD] Serial controls not found yet... retrying.");
+            return void setTimeout(initWhenReady, 200);
+        }
 
         // Prevent double insertion
         if (document.getElementById("lod-loader-box")) return;
 
-        console.log("[LOD] PCjs Ready. Initializing Native LOD Loader.");
-        buildUI(machineEl);
+        console.log("[LOD] Serial controls found. Initializing UI.");
+        buildUI(serialList, serialLoadBtn);
     }
 
-    function buildUI(machineEl) {
+    function buildUI(serialListDiv, serialLoadBtnDiv) {
+        // Find the actual <select> and <button> elements inside the wrappers
+        const selectEl = serialListDiv.querySelector("select");
+        const buttonEl = serialLoadBtnDiv.querySelector("button");
+
+        if (!selectEl || !buttonEl) {
+            console.error("[LOD] Could not find <select> or <button> inside serial controls.");
+            return;
+        }
+
+        // Create the Custom Panel
+        const machineEl = document.querySelector(".pcjs-machine");
         const box = document.createElement("div");
         box.id = "lod-loader-box";
         box.style.border = "2px solid #888";
         box.style.padding = "1em";
         box.style.marginTop = "1.5em";
-        box.style.background = "#f2f2f2";
+        box.style.background = "#e6f2ff"; // Light blue to distinguish new version
         box.style.fontFamily = "monospace";
 
         const title = document.createElement("div");
-        title.textContent = "Load OSI C1P .LOD (Native Serial)";
+        title.textContent = "Load .LOD via Serial Injection";
         title.style.fontWeight = "bold";
         title.style.marginBottom = "0.75em";
         box.appendChild(title);
@@ -53,7 +65,7 @@ console.log("[LOD] UI + Loader extension script running (Native .LOD Mode)");
 
         // LOAD BUTTON
         const loadBtn = document.createElement("button");
-        loadBtn.textContent = "LOAD .LOD VIA TAPE";
+        loadBtn.textContent = "INJECT & LOAD";
         loadBtn.style.marginTop = "0.75em";
         loadBtn.style.padding = "0.5em 1em";
         loadBtn.style.fontSize = "1.1em";
@@ -76,55 +88,51 @@ console.log("[LOD] UI + Loader extension script running (Native .LOD Mode)");
             const reader = new FileReader();
             reader.onload = () => {
                 preview.textContent = reader.result;
-                statusDiv.textContent = "File loaded. Ready to mount.";
+                statusDiv.textContent = "File loaded. Ready to inject.";
             };
             reader.readAsText(file);
         });
 
-        // Event: LOAD BUTTON
+        // Event: INJECT AND LOAD
         loadBtn.addEventListener("click", () => {
             const text = preview.textContent;
             if (!text || text.startsWith("(file contents")) {
-                alert("Please select a file first (or paste code into the preview).");
+                alert("Please select a file or paste code first.");
                 return;
             }
 
-            // 1. Find the Machine Component
-            const machine = PCjs.components.find(c => c.id && c.id.includes(".machine"));
-            if (!machine) {
-                statusDiv.textContent = "Error: Machine component not found.";
-                return;
-            }
+            statusDiv.textContent = "Preparing injection...";
 
-            // 2. Prepare Raw Text Blob
-            // We do NOT wrap in JSON. We pass the raw LOD text.
-            // We ensure lines end with CR for OSI compatibility.
+            // 1. Prepare the Text (Ensure CR line endings)
             const cleanText = text.replace(/\r\n/g, "\r").replace(/\n/g, "\r");
             
+            // 2. Create a Blob URL
+            // Note: using .65v extension in the blob type hint just in case, though URL matters most
             const blob = new Blob([cleanText], { type: "text/plain" });
             const blobURL = URL.createObjectURL(blob);
 
-            statusDiv.textContent = "Mounting tape...";
-            console.log("[LOD] Calling machine.mountSoftware with .lod filename");
+            // 3. Inject into the <select> list
+            // We create a new option at the top of the list
+            const optionName = "** CUSTOM LOD LOAD **";
+            const newOption = new Option(optionName, blobURL);
+            
+            // Add it to the beginning of the select
+            selectEl.add(newOption, 0);
+            
+            // 4. Select it
+            selectEl.selectedIndex = 0;
+            selectEl.value = blobURL;
 
-            try {
-                if (typeof machine.mountSoftware === "function") {
-                    
-                    // KEY FIX: Filename must end in .lod (or .65v) to trigger native serial loader
-                    machine.mountSoftware({
-                        name: "program.lod", 
-                        path: blobURL
-                    });
+            // 5. Trigger 'change' event so PCjs sees the new value
+            selectEl.dispatchEvent(new Event("change", { bubbles: true }));
 
-                    statusDiv.innerHTML = "<b>Tape Mounted!</b><br>1. Ensure Emulator is in Monitor Mode (Break -> M).<br>2. The system should auto-type and run.";
-                
-                } else {
-                    statusDiv.textContent = "Error: machine.mountSoftware() is not available.";
-                }
-            } catch (err) {
-                console.error(err);
-                statusDiv.textContent = "Exception: " + err.message;
-            }
+            statusDiv.innerHTML = "<b>Injected!</b> Clicking Load button...";
+
+            // 6. Click the existing PCjs 'Load' button
+            setTimeout(() => {
+                buttonEl.click();
+                statusDiv.innerHTML = "<b>Load Triggered!</b><br>Ensure you are in Monitor Mode (Break -> M).";
+            }, 200);
         });
     }
 
